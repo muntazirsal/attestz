@@ -105,6 +105,7 @@ type TPMSymmetricKey struct {
 }
 
 // TPMStructVer represents the TPM_STRUCT_VER from TPM 1.2 specification.
+// https://trustedcomputinggroup.org/wp-content/uploads/TPM-Main-Part-2-TPM-Structures_v1.2_rev116_01032011.pdf#page=35
 type TPMStructVer struct {
 	Major    uint8 // MUST be 0x01
 	Minor    uint8 // MUST be 0x01
@@ -120,6 +121,15 @@ func GetDefaultTPMStructVer() TPMStructVer {
 		RevMajor: 0x00,
 		RevMinor: 0x00,
 	}
+}
+
+// validate checks if TPMStructVer is 1.1.0.0 as per TCG spec.
+// https://trustedcomputinggroup.org/wp-content/uploads/TPM-Main-Part-2-TPM-Structures_v1.2_rev116_01032011.pdf#page=119
+func (v *TPMStructVer) validate() error {
+	if v.Major != 1 || v.Minor != 1 || v.RevMajor != 0 || v.RevMinor != 0 {
+		return fmt.Errorf("invalid TPM_STRUCT_VER: got %d.%d.%d.%d, want 1.1.0.0", v.Major, v.Minor, v.RevMajor, v.RevMinor)
+	}
+	return nil
 }
 
 // TPMIdentityProof is the structure that contains the identity proof.
@@ -436,10 +446,98 @@ func (u *DefaultTPM12Utils) ParseSymmetricKey(keyBytes []byte) (*TPMSymmetricKey
 }
 
 // ParseIdentityProof from bytes to TPMIdentityProof.
-func (u *DefaultTPM12Utils) ParseIdentityProof(_ []byte) (*TPMIdentityProof, error) {
-	// TODO: Implement the parsing of the identity proof.
-	// For now, we just return empty data.
-	return &TPMIdentityProof{}, nil
+// Link to spec: https://trustedcomputinggroup.org/wp-content/uploads/TPM-Main-Part-2-TPM-Structures_v1.2_rev116_01032011.pdf#page=119
+func (u *DefaultTPM12Utils) ParseIdentityProof(idProofBytes []byte) (*TPMIdentityProof, error) {
+	reader := bytes.NewReader(idProofBytes)
+	result := &TPMIdentityProof{}
+
+	// Read TPMStructVer fields (4 * 1 byte).
+	var tpmStructVer TPMStructVer
+	if err := binary.Read(reader, binary.BigEndian, &tpmStructVer); err != nil {
+		return nil, fmt.Errorf("failed to read TPMStructVer: %w", err)
+	}
+	if err := tpmStructVer.validate(); err != nil {
+		return nil, err
+	}
+	result.TPMStructVer = tpmStructVer
+
+	// Read LabelArea size (4 bytes).
+	labelAreaSize, err := readUint32(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read LabelArea size: %w", err)
+	}
+
+	// Read IdentityBinding size (4 bytes).
+	identityBindingSize, err := readNonZeroUint32(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read IdentityBinding size: %w", err)
+	}
+
+	// Read EndorsementCredential size (4 bytes).
+	endorsementCredentialSize, err := readUint32(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read EndorsementCredential size: %w", err)
+	}
+
+	// Read PlatformCredential size (4 bytes).
+	platformCredentialSize, err := readUint32(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read PlatformCredential size: %w", err)
+	}
+
+	// Read ConformanceCredential size (4 bytes).
+	conformanceCredentialSize, err := readUint32(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read ConformanceCredential size: %w", err)
+	}
+
+	// Read AttestationIdentityKey (TPM_PUBKEY).
+	aik, err := u.ParsePubKeyFromReader(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse AttestationIdentityKey: %w", err)
+	}
+	result.AttestationIdentityKey = *aik
+
+	// Read LabelArea.
+	labelArea, err := readBytes(reader, labelAreaSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read LabelArea: %w", err)
+	}
+	result.LabelArea = labelArea
+
+	// Read IdentityBinding.
+	identityBinding, err := readBytes(reader, identityBindingSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read IdentityBinding: %w", err)
+	}
+	result.IdentityBinding = identityBinding
+
+	// Read EndorsementCredential.
+	endorsementCredential, err := readBytes(reader, endorsementCredentialSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read EndorsementCredential: %w", err)
+	}
+	result.EndorsementCredential = endorsementCredential
+
+	// Read PlatformCredential.
+	platformCredential, err := readBytes(reader, platformCredentialSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read PlatformCredential: %w", err)
+	}
+	result.PlatformCredential = platformCredential
+
+	// Read ConformanceCredential.
+	conformanceCredential, err := readBytes(reader, conformanceCredentialSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read ConformanceCredential: %w", err)
+	}
+	result.ConformanceCredential = conformanceCredential
+
+	if reader.Len() > 0 {
+		return nil, fmt.Errorf("leftover bytes in TPM_IDENTITY_PROOF block after parsing: %d", reader.Len())
+	}
+
+	return result, nil
 }
 
 // ParsePubKeyFromReader parses a TPM_PUBKEY structure from a bytes.Reader.
