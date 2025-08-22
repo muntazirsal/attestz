@@ -28,6 +28,9 @@ import (
 	"fmt"
 
 	tpm12 "github.com/google/go-tpm/tpm"
+	"github.com/google/tink/go/aead"
+	"github.com/google/tink/go/insecurecleartextkeyset"
+	"github.com/google/tink/go/keyset"
 )
 
 const (
@@ -161,7 +164,8 @@ type TPM12Utils interface {
 	ParseIdentityProof(data []byte) (*TPMIdentityProof, error)
 	EncryptWithPublicKey(ctx context.Context, publicKey *rsa.PublicKey, data []byte, algo tpm12.Algorithm, encScheme TPMEncodingScheme) ([]byte, error)
 	DecryptWithPrivateKey(ctx context.Context, privateKey *rsa.PrivateKey, data []byte, algo tpm12.Algorithm, encScheme TPMEncodingScheme) ([]byte, error)
-	EncryptWithAes(key []byte, data []byte) ([]byte, error)
+	NewAESGCMKey(algo tpm12.Algorithm) (*keyset.Handle, []byte, error)
+	EncryptWithAes(kh *keyset.Handle, data []byte) ([]byte, error)
 	DecryptWithSymmetricKey(ctx context.Context, symKey []byte, data []byte, algo tpm12.Algorithm, encScheme TPMEncodingScheme) ([]byte, error)
 	VerifySignature(ctx context.Context, pubKey []byte, signature []byte, data []byte, hash crypto.Hash) (bool, error)
 	SerializeStorePubKey(pubKey *TPMStorePubKey) ([]byte, error)
@@ -432,10 +436,95 @@ func (u *DefaultTPM12Utils) ParseSymmetricKey(keyBytes []byte) (*TPMSymmetricKey
 }
 
 // ParseIdentityProof from bytes to TPMIdentityProof.
-func (u *DefaultTPM12Utils) ParseIdentityProof(_ []byte) (*TPMIdentityProof, error) {
-	// TODO: Implement the parsing of the identity proof.
-	// For now, we just return empty data.
-	return &TPMIdentityProof{}, nil
+// Link to spec: https://trustedcomputinggroup.org/wp-content/uploads/TPM-Main-Part-2-TPM-Structures_v1.2_rev116_01032011.pdf#page=119
+func (u *DefaultTPM12Utils) ParseIdentityProof(idProofBytes []byte) (*TPMIdentityProof, error) {
+	reader := bytes.NewReader(idProofBytes)
+	result := &TPMIdentityProof{}
+
+	// Read TPMStructVer fields (4 * 1 byte).
+	var tpmStructVer TPMStructVer
+	if err := binary.Read(reader, binary.BigEndian, &tpmStructVer); err != nil {
+		return nil, fmt.Errorf("failed to read TPMStructVer: %w", err)
+	}
+	result.TPMStructVer = tpmStructVer
+
+	// Read AttestationIdentityKey (TPM_PUBKEY).
+	aik, err := u.ParsePubKeyFromReader(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse AttestationIdentityKey: %w", err)
+	}
+	result.AttestationIdentityKey = *aik
+
+	// Read LabelArea size (4 bytes).
+	labelAreaSize, err := readUint32(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read LabelArea size: %w", err)
+	}
+
+	// Read LabelArea.
+	labelArea, err := readBytes(reader, labelAreaSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read LabelArea: %w", err)
+	}
+	result.LabelArea = labelArea
+
+	// Read IdentityBinding size (4 bytes).
+	identityBindingSize, err := readNonZeroUint32(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read IdentityBinding size: %w", err)
+	}
+
+	// Read IdentityBinding.
+	identityBinding, err := readBytes(reader, identityBindingSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read IdentityBinding: %w", err)
+	}
+	result.IdentityBinding = identityBinding
+
+	// Read EndorsementCredential size (4 bytes).
+	endorsementCredentialSize, err := readUint32(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read EndorsementCredential size: %w", err)
+	}
+
+	// Read EndorsementCredential.
+	endorsementCredential, err := readBytes(reader, endorsementCredentialSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read EndorsementCredential: %w", err)
+	}
+	result.EndorsementCredential = endorsementCredential
+
+	// Read PlatformCredential size (4 bytes).
+	platformCredentialSize, err := readUint32(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read PlatformCredential size: %w", err)
+	}
+
+	// Read PlatformCredential.
+	platformCredential, err := readBytes(reader, platformCredentialSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read PlatformCredential: %w", err)
+	}
+	result.PlatformCredential = platformCredential
+
+	// Read ConformanceCredential size (4 bytes).
+	conformanceCredentialSize, err := readUint32(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read ConformanceCredential size: %w", err)
+	}
+
+	// Read ConformanceCredential.
+	conformanceCredential, err := readBytes(reader, conformanceCredentialSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read ConformanceCredential: %w", err)
+	}
+	result.ConformanceCredential = conformanceCredential
+
+	if reader.Len() > 0 {
+		return nil, fmt.Errorf("leftover bytes in TPM_IDENTITY_PROOF block after parsing: %d", reader.Len())
+	}
+
+	return result, nil
 }
 
 // ParsePubKeyFromReader parses a TPM_PUBKEY structure from a bytes.Reader.
@@ -508,11 +597,42 @@ func (u *DefaultTPM12Utils) DecryptWithPrivateKey(ctx context.Context, privateKe
 	}
 }
 
+// NewAESGCMKey creates a new AES GCM keyset handle and returns the keyset handle and the binary keyset.
+func (u *DefaultTPM12Utils) NewAESGCMKey(algo tpm12.Algorithm) (*keyset.Handle, []byte, error) {
+	var kh *keyset.Handle
+	var err error
+	switch algo {
+	case tpm12.AlgAES128:
+		kh, err = keyset.NewHandle(aead.AES128GCMKeyTemplate())
+	case tpm12.AlgAES256:
+		kh, err = keyset.NewHandle(aead.AES256GCMKeyTemplate())
+	default:
+		return nil, nil, fmt.Errorf("unsupported algorithm for NewAESGCMKey: %v", tpm12.AlgMap[algo])
+	}
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create AES key handle: %w", err)
+	}
+
+	// Create a buffer for the binary keyset.
+	buf := new(bytes.Buffer)
+	if err := insecurecleartextkeyset.Write(kh, keyset.NewBinaryWriter(buf)); err != nil {
+		return nil, nil, fmt.Errorf("failed to write keyset to binary: %w", err)
+	}
+	return kh, buf.Bytes(), nil
+}
+
 // EncryptWithAes encrypts data using an AES key.
-func (u *DefaultTPM12Utils) EncryptWithAes(_ []byte, data []byte) ([]byte, error) {
-	// TODO: Implement the encryption using AES-GCM.
-	// For now, we just return the data as is.
-	return data, nil
+func (u *DefaultTPM12Utils) EncryptWithAes(kh *keyset.Handle, data []byte) ([]byte, error) {
+	a, err := aead.New(kh)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create AEAD primitive: %w", err)
+	}
+	associatedData := []byte("")
+	ciphertext, err := a.Encrypt(data, associatedData)
+	if err != nil {
+		return nil, fmt.Errorf("symmetric key encryption failed: %w", err)
+	}
+	return ciphertext, nil
 }
 
 // DecryptWithSymmetricKey decrypts data using a private key.
