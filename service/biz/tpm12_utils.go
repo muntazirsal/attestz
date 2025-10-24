@@ -23,6 +23,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"errors"
+	"log"
 	"math"
 	"math/big"
 	"slices"
@@ -433,7 +434,24 @@ func (u *DefaultTPM12Utils) ParseIdentityRequest(data []byte) (*TPMIdentityReq, 
 	result.SymBlob = symBlob
 
 	if reader.Len() > 0 {
-		return nil, fmt.Errorf("leftover bytes in TPM_IDENTITY_REQ after parsing: %d", reader.Len())
+		leftover := make([]byte, reader.Len())
+		if _, err := reader.Read(leftover); err != nil {
+			return nil, fmt.Errorf("failed to read leftover bytes: %w", err)
+		}
+
+		allZeros := true
+		for _, b := range leftover {
+			if b != 0x00 {
+				allZeros = false
+				break
+			}
+		}
+
+		if allZeros {
+			log.Printf("ParseIdentityRequest: Ignoring %d trailing zero bytes in TPM_IDENTITY_REQ.", len(leftover))
+		} else {
+			return nil, fmt.Errorf("leftover non-zero bytes in TPM_IDENTITY_REQ after parsing: %d", len(leftover))
+		}
 	}
 
 	return result, nil
