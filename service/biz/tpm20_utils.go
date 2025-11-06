@@ -17,6 +17,7 @@ package biz
 
 import (
 	"bytes"
+	"crypto/ecdsa"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/rsa"
@@ -27,6 +28,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"math/big"
 
 	log "github.com/golang/glog"
 	tpm20 "github.com/google/go-tpm/tpm2"
@@ -425,7 +427,162 @@ func (u *DefaultTPM20Utils) VerifyIAKAttributes(iakPub []byte) (*tpm20.TPMTPubli
 
 // VerifyTPMTSignature verifies the TPMT_SIGNATURE structure using the given public key.
 func (u *DefaultTPM20Utils) VerifyTPMTSignature(data []byte, signature *tpm20.TPMTSignature, pubKey *tpm20.TPMTPublic) error {
-	// TODO: Implement this function.
+	if signature == nil {
+		return fmt.Errorf("signature cannot be nil")
+	}
+	if pubKey == nil {
+		return fmt.Errorf("pubKey cannot be nil")
+	}
+
+	// Verify the signature using the corresponding algorithm.
+	switch signature.SigAlg {
+	case tpm20.TPMAlgRSASSA:
+		if pubKey.Type != tpm20.TPMAlgRSA {
+			return fmt.Errorf("%w: signature algorithm %v requires public key type %v, got %v", ErrWrongAlgo, signature.SigAlg, tpm20.TPMAlgRSA, pubKey.Type)
+		}
+		rsaParams, err := pubKey.Parameters.RSADetail()
+		if err != nil {
+			return fmt.Errorf("failed to get RSA parameters from public key: %w", err)
+		}
+		if rsaParams.Scheme.Scheme != signature.SigAlg {
+			return fmt.Errorf("%w: signature algorithm %v does not match public key scheme %v", ErrWrongAlgo, signature.SigAlg, rsaParams.Scheme.Scheme)
+		}
+		sig, err := signature.Signature.RSASSA()
+		if err != nil {
+			return fmt.Errorf("failed to get RSASSA signature: %w", err)
+		}
+		return verifyRSASSA(data, sig, pubKey)
+	case tpm20.TPMAlgRSAPSS:
+		if pubKey.Type != tpm20.TPMAlgRSA {
+			return fmt.Errorf("%w: signature algorithm %v requires public key type %v, got %v", ErrWrongAlgo, signature.SigAlg, tpm20.TPMAlgRSA, pubKey.Type)
+		}
+		rsaParams, err := pubKey.Parameters.RSADetail()
+		if err != nil {
+			return fmt.Errorf("failed to get RSA parameters from public key: %w", err)
+		}
+		if rsaParams.Scheme.Scheme != signature.SigAlg {
+			return fmt.Errorf("%w: signature algorithm %v does not match public key scheme %v", ErrWrongAlgo, signature.SigAlg, rsaParams.Scheme.Scheme)
+		}
+		sig, err := signature.Signature.RSAPSS()
+		if err != nil {
+			return fmt.Errorf("failed to get RSAPSS signature: %w", err)
+		}
+		return verifyRSAPSS(data, sig, pubKey)
+	case tpm20.TPMAlgECDSA:
+		if pubKey.Type != tpm20.TPMAlgECC {
+			return fmt.Errorf("%w: signature algorithm %v requires public key type %v, got %v", ErrWrongAlgo, signature.SigAlg, tpm20.TPMAlgECC, pubKey.Type)
+		}
+		eccParams, err := pubKey.Parameters.ECCDetail()
+		if err != nil {
+			return fmt.Errorf("failed to get ECC parameters from public key: %w", err)
+		}
+		if eccParams.Scheme.Scheme != signature.SigAlg {
+			return fmt.Errorf("%w: signature algorithm %v does not match public key scheme %v", ErrWrongAlgo, signature.SigAlg, eccParams.Scheme.Scheme)
+		}
+		sig, err := signature.Signature.ECDSA()
+		if err != nil {
+			return fmt.Errorf("failed to get ECDSA signature: %w", err)
+		}
+		return verifyECDSA(data, sig, pubKey)
+	case tpm20.TPMAlgHMAC:
+		return fmt.Errorf("HMAC verification should use VerifyHMAC function, not VerifyTPMTSignature")
+	default:
+		return fmt.Errorf("unsupported signature scheme: %v", signature.SigAlg)
+	}
+}
+
+func verifyRSASSA(data []byte, sig *tpm20.TPMSSignatureRSA, pubKey *tpm20.TPMTPublic) error {
+	rsaDetail, err := pubKey.Parameters.RSADetail()
+	if err != nil {
+		return fmt.Errorf("failed to get RSA parameters from public key: %w", err)
+	}
+	unique, err := pubKey.Unique.RSA()
+	if err != nil {
+		return fmt.Errorf("failed to get RSA unique field from public key: %w", err)
+	}
+	e := rsaDetail.Exponent
+	if e == 0 {
+		e = 65537 // Default RSA exponent
+	}
+	rsaPubKey := &rsa.PublicKey{
+		N: new(big.Int).SetBytes(unique.Buffer),
+		E: int(e),
+	}
+
+	hash, err := sig.Hash.Hash()
+	if err != nil {
+		return fmt.Errorf("unsupported hash algorithm in signature: %w", err)
+	}
+	hasher := hash.New()
+	hasher.Write(data)
+	hashed := hasher.Sum(nil)
+
+	return rsa.VerifyPKCS1v15(rsaPubKey, hash, hashed, sig.Sig.Buffer)
+}
+
+func verifyRSAPSS(data []byte, sig *tpm20.TPMSSignatureRSA, pubKey *tpm20.TPMTPublic) error {
+	rsaDetail, err := pubKey.Parameters.RSADetail()
+	if err != nil {
+		return fmt.Errorf("failed to get RSA parameters from public key: %w", err)
+	}
+	unique, err := pubKey.Unique.RSA()
+	if err != nil {
+		return fmt.Errorf("failed to get RSA unique field from public key: %w", err)
+	}
+	e := rsaDetail.Exponent
+	if e == 0 {
+		e = 65537 // Default RSA exponent
+	}
+	rsaPubKey := &rsa.PublicKey{
+		N: new(big.Int).SetBytes(unique.Buffer),
+		E: int(e),
+	}
+
+	hash, err := sig.Hash.Hash()
+	if err != nil {
+		return fmt.Errorf("unsupported hash algorithm in signature: %w", err)
+	}
+	hasher := hash.New()
+	hasher.Write(data)
+	hashed := hasher.Sum(nil)
+
+	return rsa.VerifyPSS(rsaPubKey, hash, hashed, sig.Sig.Buffer, &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthAuto})
+}
+
+func verifyECDSA(data []byte, sig *tpm20.TPMSSignatureECC, pubKey *tpm20.TPMTPublic) error {
+	eccDetail, err := pubKey.Parameters.ECCDetail()
+	if err != nil {
+		return fmt.Errorf("failed to get ECC parameters from public key: %w", err)
+	}
+	unique, err := pubKey.Unique.ECC()
+	if err != nil {
+		return fmt.Errorf("failed to get ECC unique field from public key: %w", err)
+	}
+	curve, err := eccDetail.CurveID.Curve()
+	if err != nil {
+		return fmt.Errorf("unsupported ECC curve: %w", err)
+	}
+
+	ecdsaPubKey := &ecdsa.PublicKey{
+		Curve: curve,
+		X:     new(big.Int).SetBytes(unique.X.Buffer),
+		Y:     new(big.Int).SetBytes(unique.Y.Buffer),
+	}
+
+	hash, err := sig.Hash.Hash()
+	if err != nil {
+		return fmt.Errorf("unsupported hash algorithm in signature: %w", err)
+	}
+	hasher := hash.New()
+	hasher.Write(data)
+	hashed := hasher.Sum(nil)
+
+	r := new(big.Int).SetBytes(sig.SignatureR.Buffer)
+	s := new(big.Int).SetBytes(sig.SignatureS.Buffer)
+
+	if !ecdsa.Verify(ecdsaPubKey, hashed, r, s) {
+		return fmt.Errorf("ECDSA signature verification failed")
+	}
 	return nil
 }
 

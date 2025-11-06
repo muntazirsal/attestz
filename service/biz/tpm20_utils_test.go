@@ -2,6 +2,9 @@ package biz
 
 import (
 	"bytes"
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -1235,6 +1238,158 @@ func TestVerifyIdevidAttributes(t *testing.T) {
 			err := u.VerifyIdevidAttributes(tc.idevidPub, tc.keyTemplate)
 			if !errors.Is(err, tc.wantErr) {
 				t.Errorf("VerifyIDevIDAttributes() returned error %v, want error to be %v", err, tc.wantErr)
+			}
+		})
+	}
+}
+func TestVerifyTPMTSignature(t *testing.T) {
+	u := &DefaultTPM20Utils{}
+	data := []byte("test data")
+	hashed := sha256.Sum256(data)
+
+	// RSA key
+	rsaPriv, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("Failed to generate RSA key: %v", err)
+	}
+	rsaPub := &rsaPriv.PublicKey
+
+	// TPM RSA Public for RSASSA
+	tpmRSASSAPub := &tpm20.TPMTPublic{
+		Type:    tpm20.TPMAlgRSA,
+		NameAlg: tpm20.TPMAlgSHA256,
+		Parameters: tpm20.NewTPMUPublicParms(tpm20.TPMAlgRSA, &tpm20.TPMSRSAParms{
+			KeyBits:  2048,
+			Exponent: uint32(rsaPub.E),
+			Scheme: tpm20.TPMTRSAScheme{
+				Scheme: tpm20.TPMAlgRSASSA,
+				Details: tpm20.NewTPMUAsymScheme(tpm20.TPMAlgRSASSA, &tpm20.TPMSSigSchemeRSASSA{
+					HashAlg: tpm20.TPMAlgSHA256,
+				}),
+			},
+		}),
+		Unique: tpm20.NewTPMUPublicID(tpm20.TPMAlgRSA, &tpm20.TPM2BPublicKeyRSA{
+			Buffer: rsaPub.N.Bytes(),
+		}),
+	}
+
+	// TPM RSA Public for RSAPSS
+	tpmRSAPSSPub := &tpm20.TPMTPublic{
+		Type:    tpm20.TPMAlgRSA,
+		NameAlg: tpm20.TPMAlgSHA256,
+		Parameters: tpm20.NewTPMUPublicParms(tpm20.TPMAlgRSA, &tpm20.TPMSRSAParms{
+			KeyBits:  2048,
+			Exponent: uint32(rsaPub.E),
+			Scheme: tpm20.TPMTRSAScheme{
+				Scheme: tpm20.TPMAlgRSAPSS,
+				Details: tpm20.NewTPMUAsymScheme(tpm20.TPMAlgRSAPSS, &tpm20.TPMSSigSchemeRSAPSS{
+					HashAlg: tpm20.TPMAlgSHA256,
+				}),
+			},
+		}),
+		Unique: tpm20.NewTPMUPublicID(tpm20.TPMAlgRSA, &tpm20.TPM2BPublicKeyRSA{
+			Buffer: rsaPub.N.Bytes(),
+		}),
+	}
+
+	// RSASSA signature
+	rsaSignature, err := rsa.SignPKCS1v15(rand.Reader, rsaPriv, crypto.SHA256, hashed[:])
+	if err != nil {
+		t.Fatalf("Failed to sign with RSASSA: %v", err)
+	}
+	tpmRSASSASignature := &tpm20.TPMTSignature{
+		SigAlg: tpm20.TPMAlgRSASSA,
+		Signature: tpm20.NewTPMUSignature(tpm20.TPMAlgRSASSA, &tpm20.TPMSSignatureRSA{
+			Hash: tpm20.TPMAlgSHA256,
+			Sig:  tpm20.TPM2BPublicKeyRSA{Buffer: rsaSignature},
+		}),
+	}
+
+	// RSAPSS signature
+	rsaPSSSignature, err := rsa.SignPSS(rand.Reader, rsaPriv, crypto.SHA256, hashed[:], nil)
+	if err != nil {
+		t.Fatalf("Failed to sign with RSAPSS: %v", err)
+	}
+	tpmRSAPSSSignature := &tpm20.TPMTSignature{
+		SigAlg: tpm20.TPMAlgRSAPSS,
+		Signature: tpm20.NewTPMUSignature(tpm20.TPMAlgRSAPSS, &tpm20.TPMSSignatureRSA{
+			Hash: tpm20.TPMAlgSHA256,
+			Sig:  tpm20.TPM2BPublicKeyRSA{Buffer: rsaPSSSignature},
+		}),
+	}
+
+	// ECDSA key
+	ecdsaPriv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate ECDSA key: %v", err)
+	}
+	ecdsaPub := &ecdsaPriv.PublicKey
+	tpmECDSAPub := &tpm20.TPMTPublic{
+		Type:    tpm20.TPMAlgECC,
+		NameAlg: tpm20.TPMAlgSHA256,
+		Parameters: tpm20.NewTPMUPublicParms(tpm20.TPMAlgECC, &tpm20.TPMSECCParms{
+			CurveID: tpm20.TPMECCNistP256,
+			Scheme: tpm20.TPMTECCScheme{
+				Scheme: tpm20.TPMAlgECDSA,
+				Details: tpm20.NewTPMUAsymScheme(tpm20.TPMAlgECDSA, &tpm20.TPMSSigSchemeECDSA{
+					HashAlg: tpm20.TPMAlgSHA256,
+				}),
+			},
+		}),
+		Unique: tpm20.NewTPMUPublicID(tpm20.TPMAlgECC, &tpm20.TPMSECCPoint{
+			X: tpm20.TPM2BECCParameter{Buffer: ecdsaPub.X.Bytes()},
+			Y: tpm20.TPM2BECCParameter{Buffer: ecdsaPub.Y.Bytes()},
+		}),
+	}
+
+	// ECDSA signature
+	r, s, err := ecdsa.Sign(rand.Reader, ecdsaPriv, hashed[:])
+	if err != nil {
+		t.Fatalf("Failed to sign with ECDSA: %v", err)
+	}
+	tpmECDSASignature := &tpm20.TPMTSignature{
+		SigAlg: tpm20.TPMAlgECDSA,
+		Signature: tpm20.NewTPMUSignature(tpm20.TPMAlgECDSA, &tpm20.TPMSSignatureECC{
+			Hash:       tpm20.TPMAlgSHA256,
+			SignatureR: tpm20.TPM2BECCParameter{Buffer: r.Bytes()},
+			SignatureS: tpm20.TPM2BECCParameter{Buffer: s.Bytes()},
+		}),
+	}
+
+	badSignature := &tpm20.TPMTSignature{
+		SigAlg: tpm20.TPMAlgRSASSA,
+		Signature: tpm20.NewTPMUSignature(tpm20.TPMAlgRSASSA, &tpm20.TPMSSignatureRSA{
+			Hash: tpm20.TPMAlgSHA256,
+			Sig:  tpm20.TPM2BPublicKeyRSA{Buffer: []byte("bad signature")},
+		}),
+	}
+
+	testCases := []struct {
+		name      string
+		data      []byte
+		sig       *tpm20.TPMTSignature
+		pub       *tpm20.TPMTPublic
+		expectErr bool
+	}{
+		{"RSASSA Success", data, tpmRSASSASignature, tpmRSASSAPub, false},
+		{"RSASSA Failure", data, badSignature, tpmRSASSAPub, true},
+		{"RSAPSS Success", data, tpmRSAPSSSignature, tpmRSAPSSPub, false},
+		{"RSAPSS Failure", data, badSignature, tpmRSAPSSPub, true},
+		{"ECDSA Success", data, tpmECDSASignature, tpmECDSAPub, false},
+		{"ECDSA Failure", data, badSignature, tpmECDSAPub, true},
+		{"Unsupported Algorithm", data, &tpm20.TPMTSignature{SigAlg: tpm20.TPMAlgECDAA}, tpmECDSAPub, true},
+		{"HMAC", data, &tpm20.TPMTSignature{SigAlg: tpm20.TPMAlgHMAC}, nil, true},
+		{"Nil Signature", data, nil, tpmRSASSAPub, true},
+		{"Nil Public Key", data, tpmRSASSASignature, nil, true},
+		{"Mismatched RSA Scheme", data, tpmRSASSASignature, tpmRSAPSSPub, true},
+		{"Mismatched ECC Scheme", data, tpmECDSASignature, tpmRSASSAPub, true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := u.VerifyTPMTSignature(tc.data, tc.sig, tc.pub)
+			if (err != nil) != tc.expectErr {
+				t.Errorf("VerifyTPMTSignature() error = %v, expectErr %v", err, tc.expectErr)
 			}
 		})
 	}
