@@ -97,10 +97,14 @@ message AttestResponse {
   bytes eventlog_bytes = 8;
 
   enum AttestationFormat {
-    FORMAT_UNSPECIFIED = 0; // Defaults to FORMAT_TPM_RAW's behavior on the client side.
-    FORMAT_TPM_RAW = 1;     // Field IDs 1 to 8 are used if FORMAT_TPM_RAW is returned.
-    FORMAT_EAT_JWT = 2;     // Return EAT as a JSON Web Token (JWT)
-    FORMAT_EAT_CWT = 3;     // Return EAT as a CBOR Web Token (CWT)
+    // Defaults to FORMAT_TPM_RAW's behavior on the client side.
+    ATTESTATION_FORMAT_UNSPECIFIED = 0;
+    // Field IDs 1 to 8 are used if FORMAT_TPM_RAW is returned.
+    ATTESTATION_FORMAT_TPM_RAW = 1;
+    // Return EAT as a JSON Web Token (JWT)
+    ATTESTATION_FORMAT_EAT_JWT = 2;
+    // Return EAT as a CBOR Web Token (CWT)
+    ATTESTATION_FORMAT_EAT_CWT = 3;
   }
   AttestationFormat format = 98;
 
