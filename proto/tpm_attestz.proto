@@ -95,6 +95,21 @@ message AttestResponse {
 
   // [Optional] An event log using the TCG Canonical Event Log format.
   bytes eventlog_bytes = 8;
+
+  enum AttestationFormat {
+    // Defaults to FORMAT_TPM_RAW's behavior on the client side.
+    ATTESTATION_FORMAT_UNSPECIFIED = 0;
+    // Field IDs 1 to 8 are used if FORMAT_TPM_RAW is returned.
+    ATTESTATION_FORMAT_TPM_RAW = 1;
+    // Return EAT as a JSON Web Token (JWT)
+    ATTESTATION_FORMAT_EAT_JWT = 2;
+    // Return EAT as a CBOR Web Token (CWT)
+    ATTESTATION_FORMAT_EAT_CWT = 3;
+  }
+  AttestationFormat format = 98;
+
+  // Used for https://datatracker.ietf.org/doc/rfc9711/
+  bytes eat_token = 99;
 }
 
 // The service is responsible for TPM attestation workflow on the switch

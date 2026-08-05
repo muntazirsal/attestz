@@ -22,6 +22,58 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type AttestResponse_AttestationFormat int32
+
+const (
+	AttestResponse_ATTESTATION_FORMAT_UNSPECIFIED AttestResponse_AttestationFormat = 0
+	AttestResponse_ATTESTATION_FORMAT_TPM_RAW     AttestResponse_AttestationFormat = 1
+	AttestResponse_ATTESTATION_FORMAT_EAT_JWT     AttestResponse_AttestationFormat = 2
+	AttestResponse_ATTESTATION_FORMAT_EAT_CWT     AttestResponse_AttestationFormat = 3
+)
+
+// Enum value maps for AttestResponse_AttestationFormat.
+var (
+	AttestResponse_AttestationFormat_name = map[int32]string{
+		0: "ATTESTATION_FORMAT_UNSPECIFIED",
+		1: "ATTESTATION_FORMAT_TPM_RAW",
+		2: "ATTESTATION_FORMAT_EAT_JWT",
+		3: "ATTESTATION_FORMAT_EAT_CWT",
+	}
+	AttestResponse_AttestationFormat_value = map[string]int32{
+		"ATTESTATION_FORMAT_UNSPECIFIED": 0,
+		"ATTESTATION_FORMAT_TPM_RAW":     1,
+		"ATTESTATION_FORMAT_EAT_JWT":     2,
+		"ATTESTATION_FORMAT_EAT_CWT":     3,
+	}
+)
+
+func (x AttestResponse_AttestationFormat) Enum() *AttestResponse_AttestationFormat {
+	p := new(AttestResponse_AttestationFormat)
+	*p = x
+	return p
+}
+
+func (x AttestResponse_AttestationFormat) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (AttestResponse_AttestationFormat) Descriptor() protoreflect.EnumDescriptor {
+	return file_github_com_openconfig_attestz_proto_tpm_attestz_proto_enumTypes[0].Descriptor()
+}
+
+func (AttestResponse_AttestationFormat) Type() protoreflect.EnumType {
+	return &file_github_com_openconfig_attestz_proto_tpm_attestz_proto_enumTypes[0]
+}
+
+func (x AttestResponse_AttestationFormat) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use AttestResponse_AttestationFormat.Descriptor instead.
+func (AttestResponse_AttestationFormat) EnumDescriptor() ([]byte, []int) {
+	return file_github_com_openconfig_attestz_proto_tpm_attestz_proto_rawDescGZIP(), []int{1, 0}
+}
+
 type AttestRequest struct {
 	state                protoimpl.MessageState                   `protogen:"open.v1"`
 	ControlCardSelection *common_definitions.ControlCardSelection `protobuf:"bytes,1,opt,name=control_card_selection,json=controlCardSelection,proto3" json:"control_card_selection,omitempty"`
@@ -94,13 +146,15 @@ type AttestResponse struct {
 	state         protoimpl.MessageState                  `protogen:"open.v1"`
 	ControlCardId *common_definitions.ControlCardVendorId `protobuf:"bytes,1,opt,name=control_card_id,json=controlCardId,proto3" json:"control_card_id,omitempty"`
 	// Deprecated: Marked as deprecated in github.com/openconfig/attestz/proto/tpm_attestz.proto.
-	OiakCert        string                          `protobuf:"bytes,2,opt,name=oiak_cert,json=oiakCert,proto3" json:"oiak_cert,omitempty"`
-	PcrValues       map[int32][]byte                `protobuf:"bytes,3,rep,name=pcr_values,json=pcrValues,proto3" json:"pcr_values,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Quoted          []byte                          `protobuf:"bytes,4,opt,name=quoted,proto3" json:"quoted,omitempty"`
-	QuoteSignature  []byte                          `protobuf:"bytes,5,opt,name=quote_signature,json=quoteSignature,proto3" json:"quote_signature,omitempty"`
-	OidevidCert     string                          `protobuf:"bytes,6,opt,name=oidevid_cert,json=oidevidCert,proto3" json:"oidevid_cert,omitempty"`
-	AttestationCert *AttestResponse_AttestationCert `protobuf:"bytes,7,opt,name=attestation_cert,json=attestationCert,proto3" json:"attestation_cert,omitempty"`
-	EventlogBytes   []byte                          `protobuf:"bytes,8,opt,name=eventlog_bytes,json=eventlogBytes,proto3" json:"eventlog_bytes,omitempty"`
+	OiakCert        string                           `protobuf:"bytes,2,opt,name=oiak_cert,json=oiakCert,proto3" json:"oiak_cert,omitempty"`
+	PcrValues       map[int32][]byte                 `protobuf:"bytes,3,rep,name=pcr_values,json=pcrValues,proto3" json:"pcr_values,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Quoted          []byte                           `protobuf:"bytes,4,opt,name=quoted,proto3" json:"quoted,omitempty"`
+	QuoteSignature  []byte                           `protobuf:"bytes,5,opt,name=quote_signature,json=quoteSignature,proto3" json:"quote_signature,omitempty"`
+	OidevidCert     string                           `protobuf:"bytes,6,opt,name=oidevid_cert,json=oidevidCert,proto3" json:"oidevid_cert,omitempty"`
+	AttestationCert *AttestResponse_AttestationCert  `protobuf:"bytes,7,opt,name=attestation_cert,json=attestationCert,proto3" json:"attestation_cert,omitempty"`
+	EventlogBytes   []byte                           `protobuf:"bytes,8,opt,name=eventlog_bytes,json=eventlogBytes,proto3" json:"eventlog_bytes,omitempty"`
+	Format          AttestResponse_AttestationFormat `protobuf:"varint,98,opt,name=format,proto3,enum=openconfig.attestz.AttestResponse_AttestationFormat" json:"format,omitempty"`
+	EatToken        []byte                           `protobuf:"bytes,99,opt,name=eat_token,json=eatToken,proto3" json:"eat_token,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -188,6 +242,20 @@ func (x *AttestResponse) GetAttestationCert() *AttestResponse_AttestationCert {
 func (x *AttestResponse) GetEventlogBytes() []byte {
 	if x != nil {
 		return x.EventlogBytes
+	}
+	return nil
+}
+
+func (x *AttestResponse) GetFormat() AttestResponse_AttestationFormat {
+	if x != nil {
+		return x.Format
+	}
+	return AttestResponse_ATTESTATION_FORMAT_UNSPECIFIED
+}
+
+func (x *AttestResponse) GetEatToken() []byte {
+	if x != nil {
+		return x.EatToken
 	}
 	return nil
 }
@@ -284,7 +352,7 @@ const file_github_com_openconfig_attestz_proto_tpm_attestz_proto_rawDesc = "" +
 	"\x05nonce\x18\x02 \x01(\fR\x05nonce\x12>\n" +
 	"\thash_algo\x18\x03 \x01(\x0e2!.openconfig.attestz.Tpm20HashAlgoR\bhashAlgo\x12\x1f\n" +
 	"\vpcr_indices\x18\x04 \x03(\x05R\n" +
-	"pcrIndices\"\xd4\x04\n" +
+	"pcrIndices\"\xd9\x06\n" +
 	"\x0eAttestResponse\x12O\n" +
 	"\x0fcontrol_card_id\x18\x01 \x01(\v2'.openconfig.attestz.ControlCardVendorIdR\rcontrolCardId\x12\x1f\n" +
 	"\toiak_cert\x18\x02 \x01(\tB\x02\x18\x01R\boiakCert\x12P\n" +
@@ -294,14 +362,21 @@ const file_github_com_openconfig_attestz_proto_tpm_attestz_proto_rawDesc = "" +
 	"\x0fquote_signature\x18\x05 \x01(\fR\x0equoteSignature\x12!\n" +
 	"\foidevid_cert\x18\x06 \x01(\tR\voidevidCert\x12]\n" +
 	"\x10attestation_cert\x18\a \x01(\v22.openconfig.attestz.AttestResponse.AttestationCertR\x0fattestationCert\x12%\n" +
-	"\x0eeventlog_bytes\x18\b \x01(\fR\reventlogBytes\x1aV\n" +
+	"\x0eeventlog_bytes\x18\b \x01(\fR\reventlogBytes\x12L\n" +
+	"\x06format\x18b \x01(\x0e24.openconfig.attestz.AttestResponse.AttestationFormatR\x06format\x12\x1b\n" +
+	"\teat_token\x18c \x01(\fR\beatToken\x1aV\n" +
 	"\x0fAttestationCert\x12\x1b\n" +
 	"\baik_cert\x18\x01 \x01(\tH\x00R\aaikCert\x12\x1d\n" +
 	"\toiak_cert\x18\x02 \x01(\tH\x00R\boiakCertB\a\n" +
 	"\x05value\x1a<\n" +
 	"\x0ePcrValuesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\x05R\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x012d\n" +
+	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01\"\x97\x01\n" +
+	"\x11AttestationFormat\x12\"\n" +
+	"\x1eATTESTATION_FORMAT_UNSPECIFIED\x10\x00\x12\x1e\n" +
+	"\x1aATTESTATION_FORMAT_TPM_RAW\x10\x01\x12\x1e\n" +
+	"\x1aATTESTATION_FORMAT_EAT_JWT\x10\x02\x12\x1e\n" +
+	"\x1aATTESTATION_FORMAT_EAT_CWT\x10\x032d\n" +
 	"\x11TpmAttestzService\x12O\n" +
 	"\x06Attest\x12!.openconfig.attestz.AttestRequest\x1a\".openconfig.attestz.AttestResponseB\x1fZ\x1dgithub.com/openconfig/attestzb\x06proto3"
 
@@ -317,29 +392,32 @@ func file_github_com_openconfig_attestz_proto_tpm_attestz_proto_rawDescGZIP() []
 	return file_github_com_openconfig_attestz_proto_tpm_attestz_proto_rawDescData
 }
 
+var file_github_com_openconfig_attestz_proto_tpm_attestz_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_github_com_openconfig_attestz_proto_tpm_attestz_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_github_com_openconfig_attestz_proto_tpm_attestz_proto_goTypes = []any{
-	(*AttestRequest)(nil),                  // 0: openconfig.attestz.AttestRequest
-	(*AttestResponse)(nil),                 // 1: openconfig.attestz.AttestResponse
-	(*AttestResponse_AttestationCert)(nil), // 2: openconfig.attestz.AttestResponse.AttestationCert
-	nil,                                    // 3: openconfig.attestz.AttestResponse.PcrValuesEntry
-	(*common_definitions.ControlCardSelection)(nil), // 4: openconfig.attestz.ControlCardSelection
-	(common_definitions.Tpm20HashAlgo)(0),           // 5: openconfig.attestz.Tpm20HashAlgo
-	(*common_definitions.ControlCardVendorId)(nil),  // 6: openconfig.attestz.ControlCardVendorId
+	(AttestResponse_AttestationFormat)(0),  // 0: openconfig.attestz.AttestResponse.AttestationFormat
+	(*AttestRequest)(nil),                  // 1: openconfig.attestz.AttestRequest
+	(*AttestResponse)(nil),                 // 2: openconfig.attestz.AttestResponse
+	(*AttestResponse_AttestationCert)(nil), // 3: openconfig.attestz.AttestResponse.AttestationCert
+	nil,                                    // 4: openconfig.attestz.AttestResponse.PcrValuesEntry
+	(*common_definitions.ControlCardSelection)(nil), // 5: openconfig.attestz.ControlCardSelection
+	(common_definitions.Tpm20HashAlgo)(0),           // 6: openconfig.attestz.Tpm20HashAlgo
+	(*common_definitions.ControlCardVendorId)(nil),  // 7: openconfig.attestz.ControlCardVendorId
 }
 var file_github_com_openconfig_attestz_proto_tpm_attestz_proto_depIdxs = []int32{
-	4, // 0: openconfig.attestz.AttestRequest.control_card_selection:type_name -> openconfig.attestz.ControlCardSelection
-	5, // 1: openconfig.attestz.AttestRequest.hash_algo:type_name -> openconfig.attestz.Tpm20HashAlgo
-	6, // 2: openconfig.attestz.AttestResponse.control_card_id:type_name -> openconfig.attestz.ControlCardVendorId
-	3, // 3: openconfig.attestz.AttestResponse.pcr_values:type_name -> openconfig.attestz.AttestResponse.PcrValuesEntry
-	2, // 4: openconfig.attestz.AttestResponse.attestation_cert:type_name -> openconfig.attestz.AttestResponse.AttestationCert
-	0, // 5: openconfig.attestz.TpmAttestzService.Attest:input_type -> openconfig.attestz.AttestRequest
-	1, // 6: openconfig.attestz.TpmAttestzService.Attest:output_type -> openconfig.attestz.AttestResponse
-	6, // [6:7] is the sub-list for method output_type
-	5, // [5:6] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	5, // 0: openconfig.attestz.AttestRequest.control_card_selection:type_name -> openconfig.attestz.ControlCardSelection
+	6, // 1: openconfig.attestz.AttestRequest.hash_algo:type_name -> openconfig.attestz.Tpm20HashAlgo
+	7, // 2: openconfig.attestz.AttestResponse.control_card_id:type_name -> openconfig.attestz.ControlCardVendorId
+	4, // 3: openconfig.attestz.AttestResponse.pcr_values:type_name -> openconfig.attestz.AttestResponse.PcrValuesEntry
+	3, // 4: openconfig.attestz.AttestResponse.attestation_cert:type_name -> openconfig.attestz.AttestResponse.AttestationCert
+	0, // 5: openconfig.attestz.AttestResponse.format:type_name -> openconfig.attestz.AttestResponse.AttestationFormat
+	1, // 6: openconfig.attestz.TpmAttestzService.Attest:input_type -> openconfig.attestz.AttestRequest
+	2, // 7: openconfig.attestz.TpmAttestzService.Attest:output_type -> openconfig.attestz.AttestResponse
+	7, // [7:8] is the sub-list for method output_type
+	6, // [6:7] is the sub-list for method input_type
+	6, // [6:6] is the sub-list for extension type_name
+	6, // [6:6] is the sub-list for extension extendee
+	0, // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_github_com_openconfig_attestz_proto_tpm_attestz_proto_init() }
@@ -356,13 +434,14 @@ func file_github_com_openconfig_attestz_proto_tpm_attestz_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_github_com_openconfig_attestz_proto_tpm_attestz_proto_rawDesc), len(file_github_com_openconfig_attestz_proto_tpm_attestz_proto_rawDesc)),
-			NumEnums:      0,
+			NumEnums:      1,
 			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_github_com_openconfig_attestz_proto_tpm_attestz_proto_goTypes,
 		DependencyIndexes: file_github_com_openconfig_attestz_proto_tpm_attestz_proto_depIdxs,
+		EnumInfos:         file_github_com_openconfig_attestz_proto_tpm_attestz_proto_enumTypes,
 		MessageInfos:      file_github_com_openconfig_attestz_proto_tpm_attestz_proto_msgTypes,
 	}.Build()
 	File_github_com_openconfig_attestz_proto_tpm_attestz_proto = out.File
