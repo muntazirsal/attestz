@@ -516,17 +516,18 @@ func (u *DefaultTPM20Utils) VerifyIAKAttributes(iakPub []byte) (*tpm20.TPMTPubli
 			return nil, fmt.Errorf("%w: unexpected eccParams.Scheme.Scheme in iakPubKey got %v, want %v", ErrInvalidPubKeyAttributes, eccParams.Scheme.Scheme, tpm20.TPMAlgECDSA)
 		}
 
-		if eccParams.CurveID == tpm20.TPMECCNistP384 {
+		switch eccParams.CurveID {
+		case tpm20.TPMECCNistP384:
 			if iakPubKey.NameAlg != tpm20.TPMAlgSHA384 {
 				return nil, fmt.Errorf("%w: TPMAlgECC with CurveID TPMECCNistP384 must use NameAlg TPMAlgSHA384, got %v", ErrInvalidPubKeyAttributes, iakPubKey.NameAlg)
 			}
 			expectedPolicySecret = expectedPolicySecretSHA384
-		} else if eccParams.CurveID == tpm20.TPMECCNistP256 {
+		case tpm20.TPMECCNistP256:
 			if iakPubKey.NameAlg != tpm20.TPMAlgSHA256 {
 				return nil, fmt.Errorf("%w: TPMAlgECC with CurveID TPMECCNistP256 must use NameAlg TPMAlgSHA256, got %v", ErrInvalidPubKeyAttributes, iakPubKey.NameAlg)
 			}
 			expectedPolicySecret = expectedPolicySecretSHA256
-		} else {
+		default:
 			return nil, fmt.Errorf("%w: unexpected eccParams.CurveID in iakPubKey got %v, want %v or %v", ErrInvalidPubKeyAttributes, eccParams.CurveID, tpm20.TPMECCNistP384, tpm20.TPMECCNistP256)
 		}
 	default:
